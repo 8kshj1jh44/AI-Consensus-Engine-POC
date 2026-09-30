@@ -120,20 +120,31 @@ async def query_arbiter(
     original_prompt: str,
     provider_results: dict[str, ProviderResult],
 ) -> ProviderResult:
+    settings = get_settings()
+
     arbiter_input = build_arbiter_input(
         original_prompt=original_prompt,
         provider_results=provider_results,
     )
 
+    provider = settings.arbiter_model_provider.lower().strip()
+
+    if provider == "openai":
+        primary_query = _query_openai_arbiter
+        fallback_query = _query_claude_arbiter
+    else:
+        primary_query = _query_claude_arbiter
+        fallback_query = _query_openai_arbiter
+
     try:
-        return await _query_claude_arbiter(
+        return await primary_query(
             system_prompt,
             arbiter_input,
         )
 
-    except Exception:
+    except Exception as primary_error:
         try:
-            return await _query_openai_arbiter(
+            return await fallback_query(
                 system_prompt,
                 arbiter_input,
             )
@@ -141,11 +152,13 @@ async def query_arbiter(
         except Exception as fallback_error:
             return ProviderResult(
                 status="failed",
-                model=FALLBACK_MODEL,
+                model="arbiter-unavailable",
                 duration_seconds=0.0,
                 error=(
                     "Both primary and fallback arbiters failed. "
-                    f"Fallback error: {type(fallback_error).__name__}: "
-                    f"{fallback_error}"
+                    f"Primary error: "
+                    f"{type(primary_error).__name__}: {primary_error}. "
+                    f"Fallback error: "
+                    f"{type(fallback_error).__name__}: {fallback_error}"
                 ),
             )

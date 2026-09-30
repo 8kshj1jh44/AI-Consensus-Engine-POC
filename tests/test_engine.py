@@ -315,7 +315,7 @@ async def test_arbiter_returns_failed_when_primary_and_fallback_fail(
     )
 
     assert result.status == "failed"
-    assert result.model == "gpt-4o"
+    assert result.model == "arbiter-unavailable"
     assert "Both primary and fallback arbiters failed" in result.error
 @pytest.mark.asyncio
 async def test_consensus_endpoint_returns_502_when_arbiter_fails(
