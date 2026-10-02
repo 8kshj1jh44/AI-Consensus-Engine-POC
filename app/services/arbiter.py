@@ -9,10 +9,6 @@ from app.config import get_settings
 from app.schemas.models import ProviderResult, TokenUsage
 
 
-PRIMARY_MODEL = "claude-sonnet-4-5-20250929"
-FALLBACK_MODEL = "gpt-4o"
-
-
 def build_arbiter_input(
     original_prompt: str,
     provider_results: dict[str, ProviderResult],
@@ -35,6 +31,7 @@ async def _query_claude_arbiter(
     arbiter_input: str,
 ) -> ProviderResult:
     settings = get_settings()
+    model_name = settings.anthropic_arbiter_model
 
     client = AsyncAnthropic(
         api_key=settings.anthropic_api_key,
@@ -47,7 +44,7 @@ async def _query_claude_arbiter(
 
     response = await asyncio.wait_for(
         client.messages.create(
-            model=PRIMARY_MODEL,
+            model=model_name,
             max_tokens=1500,
             system=system_prompt,
             messages=[
@@ -64,7 +61,7 @@ async def _query_claude_arbiter(
 
     return ProviderResult(
         status="success",
-        model=PRIMARY_MODEL,
+        model=model_name,
         duration_seconds=round(duration, 3),
         tokens=TokenUsage(
             input=response.usage.input_tokens,
@@ -79,13 +76,14 @@ async def _query_openai_arbiter(
     arbiter_input: str,
 ) -> ProviderResult:
     settings = get_settings()
+    model_name = settings.openai_arbiter_model
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     started_at = time.perf_counter()
 
     response = await asyncio.wait_for(
         client.chat.completions.create(
-            model=FALLBACK_MODEL,
+            model=model_name,
             messages=[
                 {
                     "role": "system",
@@ -105,7 +103,7 @@ async def _query_openai_arbiter(
 
     return ProviderResult(
         status="success",
-        model=FALLBACK_MODEL,
+        model=model_name,
         duration_seconds=round(duration, 3),
         tokens=TokenUsage(
             input=usage.prompt_tokens if usage else 0,

@@ -18,6 +18,15 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+    gemini_model: str = "gemini-3.8-flash"
+    openai_model: str = "gpt-4o-mini"
+    anthropic_model: str = "claude-haiku-4-5-20251001"
+
+    arbiter_model_provider: str = "anthropic"
+    anthropic_arbiter_model: str = "claude-sonnet-5-5"
+    openai_arbiter_model: str = "gpt-4o"
+
+request_timeout_seconds: float = 12.0
 
 
 @lru_cache

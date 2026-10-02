@@ -7,8 +7,6 @@ from app.config import get_settings
 from app.schemas.models import ProviderResult, TokenUsage
 
 
-MODEL = "gemini-3.8-flash"
-
 
 async def query_gemini(
     system_prompt: str,
@@ -22,7 +20,7 @@ async def query_gemini(
     try:
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
-                model=MODEL,
+                model=settings.gemini_model,
                 contents=f"{system_prompt}\n\nUser query:\n{user_prompt}",
             ),
             timeout=settings.request_timeout_seconds,
@@ -33,7 +31,7 @@ async def query_gemini(
 
         return ProviderResult(
             status="success",
-            model=MODEL,
+            model=settings.gemini_model,
             duration_seconds=round(duration, 3),
             tokens=TokenUsage(
                 input=(
@@ -55,7 +53,7 @@ async def query_gemini(
 
         return ProviderResult(
             status="failed",
-            model=MODEL,
+            model=settings.gemini_model,
             duration_seconds=round(duration, 3),
             error=f"{type(exc).__name__}: {exc}",
         )

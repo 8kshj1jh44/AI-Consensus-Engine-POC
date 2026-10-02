@@ -22,7 +22,7 @@ async def query_openai(
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model=MODEL,
+                model=settings.openai_model,
                 messages=[
                     {
                         "role": "system",
@@ -42,7 +42,7 @@ async def query_openai(
 
         return ProviderResult(
             status="success",
-            model=MODEL,
+            model=settings.openai_model,
             duration_seconds=round(duration, 3),
             tokens=TokenUsage(
                 input=usage.prompt_tokens if usage else 0,
@@ -56,7 +56,7 @@ async def query_openai(
 
         return ProviderResult(
             status="failed",
-            model=MODEL,
+            model=settings.openai_model,
             duration_seconds=round(duration, 3),
             error=f"{type(exc).__name__}: {exc}",
         )

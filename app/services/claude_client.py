@@ -7,7 +7,6 @@ from app.config import get_settings
 from app.schemas.models import ProviderResult, TokenUsage
 
 
-MODEL = "claude-haiku-4-5-20251001"
 
 
 async def query_claude(
@@ -28,7 +27,7 @@ async def query_claude(
     try:
         response = await asyncio.wait_for(
             client.messages.create(
-                model=MODEL,
+                model=settings.anthropic_model,
                 max_tokens=1024,
                 system=system_prompt,
                 messages=[
@@ -45,7 +44,7 @@ async def query_claude(
 
         return ProviderResult(
             status="success",
-            model=MODEL,
+            model=settings.anthropic_model,
             duration_seconds=round(duration, 3),
             tokens=TokenUsage(
                 input=response.usage.input_tokens,
@@ -59,7 +58,7 @@ async def query_claude(
 
         return ProviderResult(
             status="failed",
-            model=MODEL,
+            model=settings.anthropic_model,
             duration_seconds=round(duration, 3),
             error=f"{type(exc).__name__}: {exc}",
         )

@@ -2,6 +2,7 @@ from app.schemas.models import ProviderResult
 
 
 MODEL_PRICING = {
+    # Workers
     "gemini-3.8-flash": {
         "input": 0.75,
         "output": 3.75,
@@ -13,6 +14,15 @@ MODEL_PRICING = {
     "claude-haiku-4-5-20251001": {
         "input": 1.00,
         "output": 5.00,
+    },
+    # Arbiter Primary & Fallback
+    "claude-sonnet-5-5": {
+        "input": 3.00,
+        "output": 15.00,
+    },
+    "gpt-4o": {
+        "input": 2.50,
+        "output": 10.00,
     },
 }
 
