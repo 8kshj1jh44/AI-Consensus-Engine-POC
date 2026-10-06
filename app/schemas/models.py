@@ -44,6 +44,8 @@ class ProviderResult(BaseModel):
     tokens: TokenUsage = Field(default_factory=TokenUsage)
     response_text: str | None = None
     error: str | None = None
+    fallback_used: bool = False
+    primary_error: str | None = None
 
 
 class Telemetry(BaseModel):
@@ -54,9 +56,10 @@ class Telemetry(BaseModel):
 
 
 class ConsensusResponse(BaseModel):
-    status: Literal["success"]
+    status: Literal["success", "failed"]
     prompt: str
     applied_context: ConsensusContext
     consensus_answer: str
+    arbiter: ProviderResult
     telemetry: Telemetry
     provider_breakdown: dict[str, ProviderResult]

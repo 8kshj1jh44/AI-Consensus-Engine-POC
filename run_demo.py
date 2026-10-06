@@ -1,7 +1,11 @@
-import asyncio
-import time
-from unittest.mock import patch
+"""CLI demo: three consensus scenarios, including a live Anthropic
+API-key corruption failover (Scenario 3)."""
 
+import asyncio
+import os
+import time
+
+from app.config import get_settings
 from app.core.prompts import (
     build_arbiter_system_prompt,
     build_worker_system_prompt,
@@ -11,7 +15,6 @@ from app.schemas.models import (
     ConsensusResponse,
     ProviderResult,
     Telemetry,
-    TokenUsage,
 )
 from app.services.arbiter import query_arbiter
 from app.services.claude_client import query_claude
@@ -20,10 +23,14 @@ from app.services.gemini_client import query_gemini
 from app.services.openai_client import query_openai
 
 
+CORRUPTED_ANTHROPIC_KEY = (
+    "sk-ant-api03-INTENTIONALLY-CORRUPTED-KEY-FOR-LIVE-FAILOVER-DEMO"
+)
+
+
 async def run_consensus_flow(
     prompt: str,
     context: ConsensusContext,
-    simulate_anthropic_failure: bool = False,
 ) -> ConsensusResponse:
     worker_system_prompt = build_worker_system_prompt(
         role=context.role,
@@ -33,25 +40,10 @@ async def run_consensus_flow(
 
     started_at = time.perf_counter()
 
-    async def _failing_claude(*args, **kwargs):
-        return ProviderResult(
-            status="failed",
-            model="claude-haiku-4-5-20251001",
-            duration_seconds=0.15,
-            tokens=TokenUsage(input=0, output=0),
-            error="AuthenticationError: Simulated invalid Anthropic API key.",
-        )
-
-    claude_call = (
-        _failing_claude(worker_system_prompt, prompt)
-        if simulate_anthropic_failure
-        else query_claude(worker_system_prompt, prompt)
-    )
-
     results = await asyncio.gather(
         query_gemini(worker_system_prompt, prompt),
         query_openai(worker_system_prompt, prompt),
-        claude_call,
+        query_claude(worker_system_prompt, prompt),
         return_exceptions=True,
     )
 
@@ -75,6 +67,30 @@ async def run_consensus_flow(
     failed_providers = [
         name for name, res in provider_results.items() if res.status != "success"
     ]
+
+    if not successful_providers:
+        return ConsensusResponse(
+            status="failed",
+            prompt=prompt,
+            applied_context=context,
+            consensus_answer="",
+            arbiter=ProviderResult(
+                status="failed",
+                model="arbiter-skipped",
+                duration_seconds=0.0,
+                error=(
+                    "All worker providers failed - consensus halted "
+                    "(equivalent to the API's HTTP 503 response)."
+                ),
+            ),
+            telemetry=Telemetry(
+                total_duration_seconds=round(time.perf_counter() - started_at, 3),
+                total_estimated_cost_usd=0.0,
+                successful_providers=successful_providers,
+                failed_providers=failed_providers,
+            ),
+            provider_breakdown=provider_results,
+        )
 
     arbiter_system_prompt = build_arbiter_system_prompt(
         role=context.role,
@@ -107,9 +123,19 @@ async def run_consensus_flow(
         prompt=prompt,
         applied_context=context,
         consensus_answer=arbiter_result.response_text or "",
+        arbiter=arbiter_result,
         telemetry=telemetry,
         provider_breakdown=provider_results,
     )
+
+
+def resolve_primary_arbiter_model() -> str:
+    settings = get_settings()
+
+    if settings.arbiter_model_provider.lower().strip() == "openai":
+        return settings.openai_arbiter_model
+
+    return settings.anthropic_arbiter_model
 
 
 def print_response(title: str, response: ConsensusResponse):
@@ -125,6 +151,27 @@ def print_response(title: str, response: ConsensusResponse):
     print(f"Prompt: {response.prompt}")
     print("\n--- CONSENSUS ANSWER ---")
     print(response.consensus_answer.strip())
+
+    arbiter = response.arbiter
+
+    if arbiter.status == "success":
+        arbiter_role = (
+            "PRIMARY"
+            if arbiter.model == resolve_primary_arbiter_model()
+            else "FALLBACK"
+        )
+        print("\n--- ARBITER ---")
+        print(
+            f"Model: {arbiter.model} ({arbiter_role}) | "
+            f"{arbiter.duration_seconds}s | "
+            f"Tokens: {arbiter.tokens.input} in / {arbiter.tokens.output} out"
+        )
+        if arbiter.fallback_used:
+            print(f"Fallback reason: {arbiter.primary_error}")
+    else:
+        print("\n--- ARBITER ---")
+        print(f"FAILED: {arbiter.error}")
+
     print("\n--- TELEMETRY ---")
     print(f"Total Duration: {response.telemetry.total_duration_seconds}s")
     print(f"Successful Providers: {response.telemetry.successful_providers}")
@@ -140,6 +187,21 @@ def print_response(title: str, response: ConsensusResponse):
             f"Tokens: {res.tokens.input} in / {res.tokens.output} out{err_msg}"
         )
     print("\n")
+
+
+def corrupt_anthropic_key():
+    """Swap in a corrupted ANTHROPIC_API_KEY for a live auth failure."""
+    os.environ["ANTHROPIC_API_KEY"] = CORRUPTED_ANTHROPIC_KEY
+    get_settings.cache_clear()
+
+
+def restore_anthropic_key(original_env_value: str | None):
+    if original_env_value is None:
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+    else:
+        os.environ["ANTHROPIC_API_KEY"] = original_env_value
+    get_settings.cache_clear()
+
 
 async def main():
     # Scenario 1: Layman Translation
@@ -167,18 +229,34 @@ async def main():
     resp2 = await run_consensus_flow(s2_prompt, s2_context)
     print_response("Scenario 2: Underwriter / Claims Montana Coverage", resp2)
 
-    # Scenario 3: Failover Demo (Simulated Anthropic Outage)
+    # Scenario 3: Live Failover Demo (real corrupted ANTHROPIC_API_KEY).
+    # Both the Claude worker and the Claude Arbiter hit a real 401
+    # AuthenticationError, so synthesis falls back to the GPT-4o Arbiter.
     print("\n[Executing Scenario 3/3...]")
-    s3_prompt = "What does comprehensive coverage protect against in severe winter weather?"
-    s3_context = ConsensusContext(
-        role="client_communications",
-        line_of_business="personal_auto",
-        state="MT",
+    print(
+        "[Scenario 3] Corrupting ANTHROPIC_API_KEY for a LIVE auth failure "
+        f"({CORRUPTED_ANTHROPIC_KEY})"
     )
-    resp3 = await run_consensus_flow(
-        s3_prompt, s3_context, simulate_anthropic_failure=True
+    original_env_value = os.environ.get("ANTHROPIC_API_KEY")
+
+    try:
+        corrupt_anthropic_key()
+
+        s3_prompt = "What does comprehensive coverage protect against in severe winter weather?"
+        s3_context = ConsensusContext(
+            role="client_communications",
+            line_of_business="personal_auto",
+            state="MT",
+        )
+        resp3 = await run_consensus_flow(s3_prompt, s3_context)
+    finally:
+        restore_anthropic_key(original_env_value)
+
+    print_response(
+        "Scenario 3: Live Failover (Corrupted ANTHROPIC_API_KEY, "
+        "Arbiter Fallback)",
+        resp3,
     )
-    print_response("Scenario 3: Failover Demo (2/3 Survivors Synthesized)", resp3)
 
 
 if __name__ == "__main__":

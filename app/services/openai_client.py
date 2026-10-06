@@ -7,9 +7,6 @@ from app.config import get_settings
 from app.schemas.models import ProviderResult, TokenUsage
 
 
-MODEL = "gpt-4o-mini"
-
-
 async def query_openai(
     system_prompt: str,
     user_prompt: str,

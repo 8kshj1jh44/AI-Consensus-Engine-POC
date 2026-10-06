@@ -134,6 +134,7 @@ async def create_consensus(
         prompt=request.prompt,
         applied_context=request.context,
         consensus_answer=arbiter_result.response_text or "",
+        arbiter=arbiter_result,
         telemetry=Telemetry(
             total_duration_seconds=round(total_duration, 3),
             total_estimated_cost_usd=total_cost,

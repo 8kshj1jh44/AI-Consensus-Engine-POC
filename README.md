@@ -21,12 +21,14 @@ All model IDs are centralized via environment variables and configuration object
 
 ## Architecture & Resilience
 
-1. **Concurrent Worker Execution:** Workers execute in parallel via `asyncio.gather(..., return_exceptions=True)` under a strict timeout threshold (default: 12 seconds).
+1. **Concurrent Worker Execution:** Workers execute in parallel via `asyncio.gather(..., return_exceptions=True)` under a strict timeout threshold (`REQUEST_TIMEOUT_SECONDS`, default: 12 seconds).
 2. **Graceful Failover:**
    - Survives individual worker timeouts, HTTP 429/500 errors, or authentication issues.
    - The Arbiter synthesizes from whichever workers succeed (3/3, 2/3, or 1/3).
    - If all workers fail, returns HTTP 503.
-   - If the primary Arbiter fails, automatically fails over to the fallback Arbiter.
+   - If the primary Arbiter fails, automatically fails over to the fallback Arbiter (demonstrated live in Scenario 3 of `run_demo.py`, which runs with a corrupted `ANTHROPIC_API_KEY`).
+3. **Separate Arbiter Timeout:** The Arbiter gets its own synthesis budget (`ARBITER_TIMEOUT_SECONDS`, default: 60 seconds) since generating a full synthesis can exceed the worker timeout.
+4. **Telemetry & Cost Tracking:** Tracks end-to-end duration, per-provider execution time, token usage, and real-time USD cost estimation.
 3. **Telemetry & Cost Tracking:** Tracks end-to-end duration, per-provider execution time, token usage, and real-time USD cost estimation.
 
 ---
@@ -51,6 +53,32 @@ ai-consensus-engine/
 ├── tests/
 │   └── test_engine.py          # Automated test suite
 ├── .env.example                # Environment variables template
-├── requirements.txt            # Project dependencies
+├── requirements.txt            # Pinned project dependencies
 ├── run_demo.py                 # 3-scenario CLI demonstration script
 └── README.md                   # Documentation
+
+---
+
+## Setup & Running
+
+```bash
+python -m venv .venv
+source .venv/bin/activate         # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+cp .env.example .env              # Windows: copy .env.example .env
+# Fill in your API keys and ANTHROPIC_WORKSPACE_ID in .env
+
+# Run the 3-scenario CLI demo. Scenario 3 performs a live failover:
+# it corrupts ANTHROPIC_API_KEY so the Claude worker AND the Claude
+# Arbiter both fail with a real 401, and synthesis falls back to GPT-4o.
+python run_demo.py
+
+# Run the automated test suite
+pytest
+
+# Serve the FastAPI endpoint
+uvicorn app.main:app --reload
+```
+
+All configuration lives in `.env` (see `.env.example`): provider API keys, `ANTHROPIC_WORKSPACE_ID`, worker and Arbiter model IDs, `ARBITER_MODEL_PROVIDER`, and the two timeout budgets — `REQUEST_TIMEOUT_SECONDS` (workers, default 12) and `ARBITER_TIMEOUT_SECONDS` (Arbiter synthesis, default 60).

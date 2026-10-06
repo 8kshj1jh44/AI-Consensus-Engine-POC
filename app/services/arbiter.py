@@ -33,11 +33,15 @@ async def _query_claude_arbiter(
     settings = get_settings()
     model_name = settings.anthropic_arbiter_model
 
+    workspace_id = settings.anthropic_workspace_id
+
     client = AsyncAnthropic(
         api_key=settings.anthropic_api_key,
-        default_headers={
-            "anthropic-workspace-id": settings.anthropic_workspace_id,
-        },
+        default_headers=(
+            {"anthropic-workspace-id": workspace_id}
+            if workspace_id
+            else None
+        ),
     )
 
     started_at = time.perf_counter()
@@ -54,10 +58,14 @@ async def _query_claude_arbiter(
                 }
             ],
         ),
-        timeout=settings.request_timeout_seconds,
+        timeout=settings.arbiter_timeout_seconds,
     )
 
     duration = time.perf_counter() - started_at
+
+    response_text = "".join(
+        block.text for block in response.content if block.type == "text"
+    )
 
     return ProviderResult(
         status="success",
@@ -67,7 +75,7 @@ async def _query_claude_arbiter(
             input=response.usage.input_tokens,
             output=response.usage.output_tokens,
         ),
-        response_text=response.content[0].text,
+        response_text=response_text,
     )
 
 
@@ -95,7 +103,7 @@ async def _query_openai_arbiter(
                 },
             ],
         ),
-        timeout=settings.request_timeout_seconds,
+        timeout=settings.arbiter_timeout_seconds,
     )
 
     duration = time.perf_counter() - started_at
@@ -142,7 +150,7 @@ async def query_arbiter(
 
     except Exception as primary_error:
         try:
-            return await fallback_query(
+            fallback_result = await fallback_query(
                 system_prompt,
                 arbiter_input,
             )
@@ -160,3 +168,10 @@ async def query_arbiter(
                     f"{type(fallback_error).__name__}: {fallback_error}"
                 ),
             )
+
+        fallback_result.fallback_used = True
+        fallback_result.primary_error = (
+            f"{type(primary_error).__name__}: {primary_error}"
+        )
+
+        return fallback_result

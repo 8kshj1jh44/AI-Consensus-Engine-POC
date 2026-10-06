@@ -1,5 +1,20 @@
-.venv/
-.env
+# Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+.venv/
+venv/
 .pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Media / logs
+*.mp4
+*.log

@@ -15,11 +15,15 @@ async def query_claude(
 ) -> ProviderResult:
     settings = get_settings()
 
+    workspace_id = settings.anthropic_workspace_id
+
     client = AsyncAnthropic(
         api_key=settings.anthropic_api_key,
-        default_headers={
-            "anthropic-workspace-id": settings.anthropic_workspace_id,
-        },
+        default_headers=(
+            {"anthropic-workspace-id": workspace_id}
+            if workspace_id
+            else None
+        ),
     )
 
     started_at = time.perf_counter()
@@ -42,6 +46,10 @@ async def query_claude(
 
         duration = time.perf_counter() - started_at
 
+        response_text = "".join(
+            block.text for block in response.content if block.type == "text"
+        )
+
         return ProviderResult(
             status="success",
             model=settings.anthropic_model,
@@ -50,7 +58,7 @@ async def query_claude(
                 input=response.usage.input_tokens,
                 output=response.usage.output_tokens,
             ),
-            response_text=response.content[0].text,
+            response_text=response_text,
         )
 
     except Exception as exc:
